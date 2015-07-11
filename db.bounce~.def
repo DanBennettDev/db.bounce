@@ -1,0 +1,4 @@
+LIBRARY bounce~.mxe
+
+EXPORTS
+	main
