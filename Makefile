@@ -34,11 +34,21 @@ CC32=i686-w64-mingw32-gcc 	#32bit MinGW
 # RECIPES 
 #-----------
 
-all: object mxe64
+all: clean 32 64
 
-all32:	object32 mxe32
+32: clean32 object32 mxe32
 
-object:
+64: clean64 object64 mxe64
+
+clean: clean32 clean64
+
+clean32:
+	-rm -f $(P).mxe $(P).o
+
+clean64:
+	-rm -f $(P).mxe64 $(P).o
+
+object64:
 	$(CC) -c -g -Wno-unknown-pragmas -O3 $(COMPFLAGS) $(MAXINC) $(P).c
 
 mxe64:
