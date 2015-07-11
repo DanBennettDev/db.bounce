@@ -72,11 +72,11 @@ typedef struct _bounce {
 	t_double  slx4; // sample len * 4 
 	t_double  fmax;
 
-	t_float	  bound_lo;		// lower bound for entire ensemble
-	t_float	  bound_hi;		// upper bound for entire ensemble
-	t_float	  **hz;			// "master" pitch for each voice
-	t_float	  *hzFloat; 
-	t_float	  **symm;		// symmetry (per voice)
+	t_double	  bound_lo;		// lower bound for entire ensemble
+	t_double	  bound_hi;		// upper bound for entire ensemble
+	t_double	  **hz;			// "master" pitch for each voice
+	t_double	  *hzFloat;
+	t_double	  **symm;		// symmetry (per voice)
 	t_double  *grad;		// variables for optimising non-signal rate calcs of symm
 	t_double  *gradb;
 	t_double  *aOverb;
@@ -84,15 +84,15 @@ typedef struct _bounce {
 
 	t_double  *ball_loc;	// location of the ball
 	t_int	  *direction;	// current direction of ball (-1/1)
-	t_float	  **fm;			// 2d matrix controling cross modulation between voices
-	t_float	  *shape;
-	t_float	  **out;		// output pointer
+	t_double	  **fm;			// 2d matrix controling cross modulation between voices
+	t_double	  *shape;
+	t_double	  **out;		// output pointer
 	t_double  *sin;			// sine wavetable
 	t_double  *sinh;		// hyperbolic sine wavetable
 
 	t_bool	  *dcblock_on;
-	t_float	  *dc_prev_in;	// history for dcblock
-	t_float	  *dc_prev_out;	
+	t_double	  *dc_prev_in;	// history for dcblock
+	t_double	  *dc_prev_out;
 
 	t_int	  *hz_conn;		// track inlet signal connection
 	t_int	  *symm_conn;		
@@ -114,7 +114,7 @@ static t_class *bounce_class;	// pointer to the class of this object
 
 // MSP infrastructure functions
 void	*bounce_new(t_symbol *s, short argc, t_atom *argv);
-void	bounce_dsp(t_bounce *x, t_signal **sp, short *count);						
+void	bounce_dsp64(t_bounce *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags);
 void	bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst);	
 void	bounce_dsp_free(t_bounce *x);
 
@@ -129,10 +129,10 @@ void	bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 
 
 // Audio Calc functions
-t_int	 *bounce_perform(t_int *w);		
+void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
 void	 bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi);
 void	 bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi);
-t_float  bounce_dcblock(t_float input, t_float *lastinput, t_float *lastoutput, t_float gain);
+t_double  bounce_dcblock(t_double input, t_double *lastinput, t_double *lastoutput, t_double gain);
 t_double bounce_fmcalc (t_bounce *x, t_int curr_voice);
 t_double ptr_correctmax(t_double p, t_double a, t_double b, t_double t, t_double pmin, t_double pmax);
 t_double ptr_correctmin(t_double p, t_double a, t_double b, t_double t, t_double pmin, t_double pmax);
@@ -158,7 +158,7 @@ int C74_EXPORT main (void)
 		sizeof(t_bounce), 0L, A_GIMME, 0);
 
 	// register methods to handle incoming messages
-	class_addmethod(bounce_class, (method)bounce_dsp, "dsp", A_CANT, 0);
+	class_addmethod(bounce_class, (method)bounce_dsp64, "dsp64", A_CANT, 0);
 	class_addmethod(bounce_class, (method)bounce_assist, "assist", A_CANT, 0);
 	class_addmethod(bounce_class, (method)bounce_bang, "bang", A_FLOAT, 0);
 	class_addmethod(bounce_class, (method)bounce_float, "float", A_FLOAT, 0);
@@ -186,29 +186,29 @@ void bounce_dsp_free (t_bounce *x)
 
 	dsp_free((t_pxobject *)x);
 
-	t_freebytes(x->hz, x->voice_count * sizeof(t_float *));
-	t_freebytes(x->out, x->voice_count * sizeof(t_float *));
-	t_freebytes(x->symm, x->voice_count * sizeof(t_float *));
-	t_freebytes(x->hzFloat, x->voice_count * sizeof(t_float ));
+	t_freebytes(x->hz, x->voice_count * sizeof(t_double *));
+	t_freebytes(x->out, x->voice_count * sizeof(t_double *));
+	t_freebytes(x->symm, x->voice_count * sizeof(t_double *));
+	t_freebytes(x->hzFloat, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->grad, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->gradb, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->aOverb, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->bOvera, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->ball_loc, x->voice_count * sizeof(t_double ));
-	t_freebytes(x->shape, x->voice_count * sizeof(t_float ));
+	t_freebytes(x->shape, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->direction, x->voice_count * sizeof(t_int ));
 	t_freebytes(x->hz_conn, x->voice_count * sizeof(t_int ));
 	t_freebytes(x->symm_conn, x->voice_count * sizeof(t_int ));
 	t_freebytes(x->dcblock_on, x->voice_count * sizeof(t_int ));
-	t_freebytes(x->dc_prev_in, x->voice_count * sizeof(t_float ));
-	t_freebytes(x->dc_prev_out, x->voice_count * sizeof(t_float ));
+	t_freebytes(x->dc_prev_in, x->voice_count * sizeof(t_double ));
+	t_freebytes(x->dc_prev_out, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->sin, LKTBL_LNGTH * sizeof(t_double ));
 	t_freebytes(x->sinh, LKTBL_LNGTH * sizeof(t_double ));
 
 	for (i =0; i < x->voice_count; i++){
-			t_freebytes(x->fm[i], x->voice_count * sizeof(t_float));
+			t_freebytes(x->fm[i], x->voice_count * sizeof(t_double));
 		}
-	t_freebytes(x->fm, x->voice_count * sizeof(t_float *));
+	t_freebytes(x->fm, x->voice_count * sizeof(t_double *));
 
 
 }
@@ -217,7 +217,7 @@ void bounce_dsp_free (t_bounce *x)
 // function to create new instance and initialise its parameters
 void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 {
-	t_float bound_lo = -1.0, bound_hi = 1.0;
+	t_double bound_lo = -1.0, bound_hi = 1.0;
 	t_int i = 0, j = 0, dir = -1;
 	t_bounce *x = object_alloc(bounce_class); // set aside memory for the struct for the object
 
@@ -226,8 +226,8 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 	x->bound_lo = bound_lo; 
 	x->bound_hi = bound_hi;
 	atom_arg_getlong(&(x->voice_count), 0, argc, argv);
-	atom_arg_getfloat(&(x->bound_lo), 1, argc, argv); 
-	atom_arg_getfloat(&(x->bound_hi), 2, argc, argv); 
+	atom_arg_getdouble(&(x->bound_lo), 1, argc, argv);
+	atom_arg_getdouble(&(x->bound_hi), 2, argc, argv);
 	x->mode = atom_getintarg(3,argc,argv); 
 	if(x->mode < 0) x->mode = 0;
 	else if (x->mode > 1) x->mode = 1;
@@ -243,10 +243,10 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 	x->obj.z_misc |= Z_NO_INPLACE; // force independent signal vectors
 
 	// allocate memory for variable arrays
-	x->hz = (t_float **) t_getbytes(x->voice_count * sizeof(t_float *));
-	x->symm = (t_float **) t_getbytes(x->voice_count * sizeof(t_float *));
-	x->out = (t_float **) t_getbytes(x->voice_count * sizeof(t_float *));
-	x->hzFloat = (t_float *) t_getbytes(x->voice_count * sizeof(t_float));
+	x->hz = (t_double **) t_getbytes(x->voice_count * sizeof(t_double *));
+	x->symm = (t_double **) t_getbytes(x->voice_count * sizeof(t_double *));
+	x->out = (t_double **) t_getbytes(x->voice_count * sizeof(t_double *));
+	x->hzFloat = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->grad = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->gradb = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->aOverb = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
@@ -256,10 +256,10 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 	x->hz_conn = (t_int *) t_getbytes(x->voice_count * sizeof(t_int));
 	x->symm_conn = (t_int *) t_getbytes(x->voice_count * sizeof(t_int));
 	x->dcblock_on = (t_bool *) t_getbytes(x->voice_count * sizeof(t_bool));
-	x->dc_prev_in = (t_float *) t_getbytes(x->voice_count * sizeof(t_float));
-	x->dc_prev_out = (t_float *) t_getbytes(x->voice_count * sizeof(t_float));
-	x->fm = (t_float **) t_getbytes(x->voice_count * sizeof(t_float *));
-	x->shape = (t_float *) t_getbytes(x->voice_count * sizeof(t_float));
+	x->dc_prev_in = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
+	x->dc_prev_out = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
+	x->fm = (t_double **) t_getbytes(x->voice_count * sizeof(t_double *));
+	x->shape = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->sin = (t_double *)  t_getbytes(LKTBL_LNGTH * sizeof(t_double)); 
 	x->sinh = (t_double *)  t_getbytes(LKTBL_LNGTH * sizeof(t_double)); 
 
@@ -269,7 +269,7 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 	x->ball_loc[0] = bound_lo + THINNESTPIPE; 
 	x->direction[0] = 1;
 	for(i=0; i < x->voice_count; i++){
-		x->fm[i] = (t_float *) t_getbytes(x->voice_count * sizeof(t_float));
+		x->fm[i] = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 		outlet_new((t_object *)x, "signal"); 
 
 		x->shape[i] = 0.1f;
@@ -297,33 +297,18 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 	return x;
 }
 
-void bounce_dsp(t_bounce *x, t_signal **sp, short *count)
+//function to connect to DSP chain
+void	bounce_dsp64(t_bounce *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags)
 {
-	t_int i, pointercount;
-	t_int **sigvec;
-	pointercount = (x->voice_count * 3) + 4; // 1each i, o, hz, symm per voice, lo + hi inputs, obj pointer and vec samps
-	
-	// allocate memory to array 
-	sigvec = (t_int **) calloc(pointercount, sizeof(t_int *));
-	for(i = 0; i < pointercount; i++){
-	sigvec[i] = (t_int *) calloc(sizeof(t_int),1);
-	}
-	// first pointer = the object
-	sigvec[0] = (t_int *)x; 
-	// last = vector size (N)
-	sigvec[pointercount - 1] = (t_int *)sp[0]->s_n; 
-	// between - inlets and outlets
-	for(i = 1; i < pointercount - 1; i++){
-	sigvec[i] = (t_int *)sp[i-1]->s_vec;	
-	}
-	
+	t_int i;
+
 	// Check sample rate in object against vector and update if neccessary
 	if(x->srate != (t_double) sys_getsr()){
 		x->srate = (t_double) sys_getsr();
 		x->slx4 =  (4 / x->srate);
 	}
 
-	dsp_addv(bounce_perform, pointercount, (void **) sigvec);
+	object_method(dsp64, gensym("dsp_add64"), x, bounce_perform64, 0, NULL);
 
 	// check if signals are connected
 	x->bound_lo_conn = count[0];
@@ -332,8 +317,48 @@ void bounce_dsp(t_bounce *x, t_signal **sp, short *count)
 		x->hz_conn[i] = count[i+2];
 		x->symm_conn[i] = count[i + 2 + x->voice_count];
 	}
-	free(sigvec);
+
+
 }
+
+
+//void bounce_dsp(t_bounce *x, t_signal **sp, short *count)
+//{
+//	t_int i, pointercount;
+//	t_int **sigvec;
+//	pointercount = (x->voice_count * 3) + 4; // 1each i, o, hz, symm per voice, lo + hi inputs, obj pointer and vec samps
+//
+//	// allocate memory to array
+//	sigvec = (t_int **) calloc(pointercount, sizeof(t_int *));
+//	for(i = 0; i < pointercount; i++){
+//	sigvec[i] = (t_int *) calloc(sizeof(t_int),1);
+//	}
+//	// first pointer = the object
+//	sigvec[0] = (t_int *)x;
+//	// last = vector size (N)
+//	sigvec[pointercount - 1] = (t_int *)sp[0]->s_n;
+//	// between - inlets and outlets
+//	for(i = 1; i < pointercount - 1; i++){
+//	sigvec[i] = (t_int *)sp[i-1]->s_vec;
+//	}
+//
+//	// Check sample rate in object against vector and update if neccessary
+//	if(x->srate != (t_double) sys_getsr()){
+//		x->srate = (t_double) sys_getsr();
+//		x->slx4 =  (4 / x->srate);
+//	}
+//
+//	dsp_addv(bounce_perform, pointercount, (void **) sigvec);
+//
+//	// check if signals are connected
+//	x->bound_lo_conn = count[0];
+//	x->bound_hi_conn = count[1];
+//	for(i=0; i< x->voice_count; i++){
+//		x->hz_conn[i] = count[i+2];
+//		x->symm_conn[i] = count[i + 2 + x->voice_count];
+//	}
+//	free(sigvec);
+//}
 
 void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 {
@@ -363,16 +388,16 @@ void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 void bounce_float(t_bounce *x, double f)
 {
 	double grad, gradb;
-	float symm;
+	double symm;
 	int inlet = ((t_pxobject*)x)->z_in;
 
 
 	switch(inlet){
-		case 0: x->bound_lo = (t_float) f; break;
-		case 1: x->bound_hi = (t_float) f; break;
+		case 0: x->bound_lo = (t_double) f; break;
+		case 1: x->bound_hi = (t_double) f; break;
 		default: 
 			if (inlet < x->voice_count + 2 && inlet > 0) {
-				x->hzFloat[inlet - 2] = (t_float) fabs(f);	
+				x->hzFloat[inlet - 2] = (t_double) fabs(f);
 			} else if (inlet -2 < x->voice_count * 2 && inlet > 0) {
 
 				if(f < SYMMMIN) symm = SYMMMIN;
@@ -415,10 +440,10 @@ void	bounce_dcblock_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 void bounce_shape_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
 	t_int v;
-	t_float amt = 0;
+	t_double amt = 0;
 
 	v =  atom_getintarg(0,argc, argv);
-	atom_arg_getfloat(&amt, 1, argc, argv); 
+	atom_arg_getdouble(&amt, 1, argc, argv);
 	v-= 1;
 	if(v < x->voice_count && v >= 0 ){
 		if(amt < 0){
@@ -442,8 +467,8 @@ void bounce_lkup_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 
 void bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
-	t_float f;
-	atom_arg_getfloat(&f, 0, argc, argv); 
+	t_double f;
+	atom_arg_getdouble(&f, 0, argc, argv);
 	if(f<=FMAX && f>=FMIN){
 		x->fmax = f * 0.5;
 	}
@@ -454,11 +479,11 @@ void bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 void	bounce_fm_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
 	t_int in, out;
-	t_float val = 0;
+	t_double val = 0;
 	if(argc == 3){
 			in =  atom_getintarg(0,argc, argv);
 			out = atom_getintarg(1,argc, argv);
-			atom_arg_getfloat(&val, 2, argc, argv); 
+			atom_arg_getdouble(&val, 2, argc, argv);
 			in -= 1, out -=1;
 
 			if(in <0 || in >= x->voice_count || out <0 || out >= x->voice_count){
@@ -522,9 +547,9 @@ double infr_scale_param(double in, double in_min, double in_max, double out_min,
 !!!!!!!!!!!!	AUDIO CALC FUNCTIONS		!!!!!!!!!!!!
 *************************************************************/
 
-t_float bounce_dcblock(t_float input, t_float *lastinput, t_float *lastoutput, t_float gain)
+t_double bounce_dcblock(t_double input, t_double *lastinput, t_double *lastoutput, t_double gain)
 {	
-	t_float output;
+	t_double output;
 	output = input - *lastinput + gain * *lastoutput;
 	*lastinput  = input;
 	*lastoutput = output;
@@ -637,32 +662,29 @@ double do_shaping (t_bounce *x, t_double lo, t_double hi)
 	}
 }
 
-t_int *bounce_perform (t_int *w)
+void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam)
 {	
-	t_float **hz, **symm, **out;
-	t_float *bound_lo, *bound_hi; 
+	t_double **hz, **symm, **out;
+	t_double *bound_lo, *bound_hi;
 	t_double this_lo, this_hi;
-	t_int samples, i, symmvecstart, outvecstart, lastpointer;
+	t_int samples, i;
 
-	// Dereference the vector pointer 
-	// 1 = object
-	t_bounce *x = (t_bounce *) (w[1]);
+
+	// Dereference
 	hz = x->hz;
 	symm = x->symm;
 	out = x->out;
-	symmvecstart = x->voice_count + 4;
-	outvecstart = (x->voice_count * 2) + 4 ;
-	lastpointer = (x->voice_count * 3) + 4;
+	samples = sampleframes;
 
 	// 2 & 3 = Lo & hi
 	if(x->bound_lo_conn){	// if signal connected, point at signal in
-		bound_lo = (t_float *) (w[2]);
+		bound_lo = (t_double *) (ins[0]);
 	} else {				// if not, point at value in bounce object
 		bound_lo = &(x->bound_lo);
 	}
 
 	if(x->bound_hi_conn){	// if signal connected, point at signal in
-		bound_hi = (t_float *) (w[3]);
+		bound_hi = (t_double *) (ins[1]);
 	} else {				// if not, point at value in bounce object
 		bound_hi = &(x->bound_hi);
 	}
@@ -670,7 +692,7 @@ t_int *bounce_perform (t_int *w)
 	// hz inputs,
 	for  (i = 0; i< x->voice_count; i++){
 		if(x->hz_conn[i]){	// if signal connected, point at signal in
-			hz[i] = (t_float *) (w[i + 4]);
+			hz[i] = (t_double *) (ins[i + 1]);
 		} else{				// if not, point at value in bounce object
 			hz[i] = &(x->hzFloat[i]);
 		}
@@ -679,27 +701,21 @@ t_int *bounce_perform (t_int *w)
 	// symm inputs,
 	for  (i = 0; i< x->voice_count; i++){
 		if(x->symm_conn[i]){	// if signal connected, point at signal in
-			symm[i] = (t_float *) (w[i + symmvecstart]);
+			symm[i] = (t_double *) (ins[i + x->voice_count + 2]);
 		} 
-		
-		//else{				// if not, point at value in bounce object
-		//	symm[i] = &(x->symmFloat[i]);
-		//} // PERFORMANCE TUNING 1
-
 	}
+
 	//  outputs
 	for  (i = 0; i< x->voice_count; i++){
-		out[i] = (t_float *) (w[i + outvecstart]);
+		out[i] = (t_double *) (outs[i]);
 	}
-	// last in array = No of samples
-	samples = w[lastpointer];
 
 	// Loop through samples in vector performing audio calcs
 	while(samples--){
 	
 		// enforce legal values for bounds
 		if (*bound_lo > *bound_hi - THINNESTPIPE){
-			*bound_hi = (t_float) (*bound_lo + ((x->voice_count + 1) * THINNESTPIPE));
+			*bound_hi = (t_double) (*bound_lo + ((x->voice_count + 1) * THINNESTPIPE));
 		}
 		// Loop through voices
 		this_lo = *bound_lo;
@@ -719,7 +735,7 @@ t_int *bounce_perform (t_int *w)
 
 			// apply dcblock if on
 			if(x->dcblock_on[x->curr_v]){
-				*(out[x->curr_v]) = bounce_dcblock(*(out[x->curr_v]),&x->dc_prev_in[x->curr_v], &x->dc_prev_out[x->curr_v], (t_float) DCBLOCK_GAIN);
+				*(out[x->curr_v]) = bounce_dcblock(*(out[x->curr_v]),&x->dc_prev_in[x->curr_v], &x->dc_prev_out[x->curr_v], (t_double) DCBLOCK_GAIN);
 			} 
 		}
 		
@@ -736,8 +752,6 @@ t_int *bounce_perform (t_int *w)
 			 out[i]++;
 		}
 	}
-	// Return pointer to next vector in dsp chain
-	return w + lastpointer + 1; 
 }
 
 
@@ -746,7 +760,7 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 {
 	t_double width, f0, fmax, slx4, symm, a, amin, amax, b, t; 
 	t_double *p;
-	t_float *out;
+	t_double *out;
 	t_int v;
 	t_int *dir;
 
@@ -787,26 +801,26 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 		if(*dir == 1){ //rising
 			*p = *p + (2 * a * t);
 			if(*p > hi - a*t){ // TRANSITION REGION
-				*out = (t_float) ptr_correctmax(*p, a, b, t, lo, hi);
+				*out = (t_double) ptr_correctmax(*p, a, b, t, lo, hi);
 						*p = (hi + (*p - hi)*(b/a));
 						*dir = -1;
 						if(v < x->voice_count - 2){
 							*(dir+1) = 1;
 					}
 			} else { // linear
-				*out = (t_float) *p;
+				*out = (t_double) *p;
 			}		
 		} else { // counting down
 			*p = *p + (2 * b * t);
 			if(*p < lo - b*t){ // TRANSITION REGION
-				*out = (t_float)ptr_correctmin(*p, a, b, t, lo, hi);
+				*out = (t_double)ptr_correctmin(*p, a, b, t, lo, hi);
 					*p = (lo + (*p - lo)*(a/b));
 					*dir = 1;
 					if(v > 0){
 						*(dir-1) = -1;
 					}
 			} else { // linear
-				*out = (t_float)*p;
+				*out = (t_double)*p;
 			}
 		}
 
@@ -832,7 +846,7 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 {
 	t_double width, f0, fmax, slx4, symm, a, b, b_over_a, t; 
 	t_double *p;
-	t_float *out;
+	t_double *out;
 	t_int v;
 	t_int *dir;
 
@@ -925,6 +939,6 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 	} else if(*p < lo) {
 		*p = lo, *dir = +1;
 	}
-	*out = (t_float) do_shaping(x, lo, hi);	 	
+	*out = (t_double) do_shaping(x, lo, hi);
 //	*out = *p;
 }
