@@ -137,7 +137,7 @@ void	bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 
 // Audio Calc functions
 void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
-void	 bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi);
+void	 bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
 void 	bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
 
 t_double  bounce_dcblock(t_double input, t_double *lastinput, t_double *lastoutput, t_double gain);
@@ -725,11 +725,10 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 			} else {	// WITHOUT SYMM SIGNALS CONNECTED
 				grad = bounce_alimit(x->grad[v], width, t);
 			}
-			////////////////////////////////////////////////////////
 
 
 			// JUST FOR DEVELOPMENT - TIDY ALL THIS UP INTO SEPARATE PERFORM ROUTINES
-			if(x->mode == 0) bounce_ptr_voicecalc(x, this_lo, this_hi);	
+			if(x->mode == 0) bounce_ptr_voicecalc(x, this_lo, this_hi, grad, t);
 			else bounce_shaper_voicecalc(x, this_lo, this_hi, grad, t);
 	
 				// next ball's lo bound is this ball's pos (limited to outer bound)
@@ -758,9 +757,9 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 
 
 
-void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
+void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t)
 {
-	t_double width, f0, fmax, symm, a, b, t;
+	t_double b;
 	t_double *p;
 	t_double *out;
 	t_int v;
@@ -771,55 +770,25 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 	p = &x->ball_loc[v];
 	out = x->out[v];
 
-	if(lo >= hi - THINNESTPIPE){
-		hi = lo + THINNESTPIPE;
-	}
-	width = hi - lo;
-
-	// get freq from freq modulation
-	f0 = bounce_fmcalc (x, v);
-
-	// determine freq & gradient limits at this width
-	fmax = x->fmax * width; 
-	// apply limits
-	if(f0>fmax) {
-		f0 = fmax;
-	} else if (f0 < FMIN) {	
-		f0 = FMIN;
-	}
-	t = f0/x->srate;
-
-	if(x->symm_conn[v]) {
-		// WITH SYMM SIGNALS CONNECTED - much slower...
-		// impose bounds on symmetry controls & get gradient
-		// can we do this outside the loop? - if symm needn't be signal rate, needn't be calculated here.
-		if(*x->symm[v] < SYMMMIN) symm = SYMMMIN;
-		else if (*x->symm[v] > SYMMMAX) symm = SYMMMAX;
-		else symm = *x->symm[v];
-		a = bounce_alimit(1/symm, width, t);
-	} else { // no signals connected to shape
-		a = bounce_alimit(x->grad[v], width, t);
-	}
-	//cursor movement calcs
 	if(*dir == 1){ //rising
-		*p = *p + (2 * a * t);
-		if(*p > hi - a*t){ // TRANSITION REGION
-			b = -a/(a-1);
-			*out = (t_double) ptr_correctmax(*p, a, b, t, lo, hi);
-					*p = (hi + (*p - hi)*(b/a));
-					*dir = -1;
-					if(v < x->voice_count - 2){
-						*(dir+1) = 1;
-				}
+		*p = *p + (2 * grad * t);
+		if(*p > hi - grad*t){ // TRANSITION REGION
+			b = -grad/(grad-1);
+			*out = (t_double) ptr_correctmax(*p, grad, b, t, lo, hi);
+			*p = (hi + (*p - hi)*(b/grad));
+			*dir = -1;
+			if(v < x->voice_count - 2){
+				*(dir+1) = 1;
+			}
 		} else { // linear
 			*out = (t_double) *p;
 		}
 	} else { // counting down
-		b = -a/(a-1);
+		b = -grad/(grad-1);
 		*p = *p + (2 * b * t);
 		if(*p < lo - b*t){ // TRANSITION REGION
-			*out = (t_double)ptr_correctmin(*p, a, b, t, lo, hi);
-				*p = (lo + (*p - lo)*(a/b));
+			*out = (t_double)ptr_correctmin(*p, grad, b, t, lo, hi);
+				*p = (lo + (*p - lo)*(grad/b));
 				*dir = 1;
 				if(v > 0){
 					*(dir-1) = -1;
@@ -828,13 +797,6 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 			*out = (t_double)*p;
 		}
 	}
-
-	if(*p > hi) {
-		*p = hi, *dir = -1;
-	} else if(*p < lo) {
-		*p = lo, *dir = +1;
-	}
-
 
 	if(*p > hi) {
 		*p = hi, *dir = -1;
@@ -862,7 +824,6 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double gr
 	out = x->out[v];
 
 
-//////////////////////////////////////////////////////////
 	//cursor movement calcs
 	if(*dir == 1){ //rising
 		*p = *p + (2 * grad * t);
