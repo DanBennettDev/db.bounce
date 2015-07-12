@@ -14,9 +14,19 @@
 		
 	Version:		0.3
 	
+	DevNotes:		Having made the PTR calcs optional, triangle symmetry calcs
+					are probably the highest single overhead remaining. I tried
+					moving these outside of the audio loop but found that the
+					constantly changing width neccessitates checking that gradient
+					is within limits & conditionally recalculating on a sample-by-sample
+					basis; so the potential gains here are minimal (@ optimisation -O3),
+					& cost in code complexity is considerable. However, if anyone
+					finds an elegant solution to improving efficiency of the calcs
+					I'd be really interested to see.
+					Probably (for x86 processors) int truncation is worth optimising?
+
 
 	TODO:	
-		- Get rid of waveshaping on voice 1 on PTR mode
 		- Simplify structure - symmetry @sig rate makes almost no difference
 		- just have 1 mode - save non-PTR function in case I want to use later, but don't use
 		- improve efficiency of waveshaping (better mechanism)
@@ -796,85 +806,54 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 		if(*x->symm[v] < SYMMMIN) symm = SYMMMIN;
 		else if (*x->symm[v] > SYMMMAX) symm = SYMMMAX;
 		else symm = *x->symm[v];
-
 		a = bounce_alimit(1/symm, width, t);
-
-
-		//cursor movement calcs
-		if(*dir == 1){ //rising
-			*p = *p + (2 * a * t);
-			if(*p > hi - a*t){ // TRANSITION REGION
-				b = -a/(a-1);
-				*out = (t_double) ptr_correctmax(*p, a, b, t, lo, hi);
-						*p = (hi + (*p - hi)*(b/a));
-						*dir = -1;
-						if(v < x->voice_count - 2){
-							*(dir+1) = 1;
-					}
-			} else { // linear
-				*out = (t_double) *p;
-			}
-		} else { // counting down
-			b = -a/(a-1);
-			*p = *p + (2 * b * t);
-			if(*p < lo - b*t){ // TRANSITION REGION
-				*out = (t_double)ptr_correctmin(*p, a, b, t, lo, hi);
-					*p = (lo + (*p - lo)*(a/b));
-					*dir = 1;
-					if(v > 0){
-						*(dir-1) = -1;
-					}
-			} else { // linear
-				*out = (t_double)*p;
-			}
-		}
-
-		if(*p > hi) {
-			*p = hi, *dir = -1;
-		} else if(*p < lo) {
-			*p = lo, *dir = +1;
-		}
 	} else { // no signals connected to shape
-
 		a = bounce_alimit(x->grad[v], width, t);
-
-		//cursor movement calcs
-		if(*dir == 1){ //rising
-			*p = *p + (2 * a * t);
-			if(*p > hi - a*t){ // TRANSITION REGION
-				b = -a/(a-1);
-				*out = (t_double) ptr_correctmax(*p, a, b, t, lo, hi);
-						*p = (hi + (*p - hi)*(b/a));
-						*dir = -1;
-						if(v < x->voice_count - 2){
-							*(dir+1) = 1;
-					}
-			} else { // linear
-				*out = (t_double) *p;
-			}
-		} else { // counting down
-			b = -a/(a-1);
-			*p = *p + (2 * b * t);
-			if(*p < lo - b*t){ // TRANSITION REGION
-				*out = (t_double)ptr_correctmin(*p, a, b, t, lo, hi);
-					*p = (lo + (*p - lo)*(a/b));
-					*dir = 1;
-					if(v > 0){
-						*(dir-1) = -1;
-					}
-			} else { // linear
-				*out = (t_double)*p;
-			}
-		}
-
-		if(*p > hi) {
-			*p = hi, *dir = -1;
-		} else if(*p < lo) {
-			*p = lo, *dir = +1;
-		}
-
 	}
+	//cursor movement calcs
+	if(*dir == 1){ //rising
+		*p = *p + (2 * a * t);
+		if(*p > hi - a*t){ // TRANSITION REGION
+			b = -a/(a-1);
+			*out = (t_double) ptr_correctmax(*p, a, b, t, lo, hi);
+					*p = (hi + (*p - hi)*(b/a));
+					*dir = -1;
+					if(v < x->voice_count - 2){
+						*(dir+1) = 1;
+				}
+		} else { // linear
+			*out = (t_double) *p;
+		}
+	} else { // counting down
+		b = -a/(a-1);
+		*p = *p + (2 * b * t);
+		if(*p < lo - b*t){ // TRANSITION REGION
+			*out = (t_double)ptr_correctmin(*p, a, b, t, lo, hi);
+				*p = (lo + (*p - lo)*(a/b));
+				*dir = 1;
+				if(v > 0){
+					*(dir-1) = -1;
+				}
+		} else { // linear
+			*out = (t_double)*p;
+		}
+	}
+
+	if(*p > hi) {
+		*p = hi, *dir = -1;
+	} else if(*p < lo) {
+		*p = lo, *dir = +1;
+	}
+
+
+	if(*p > hi) {
+		*p = hi, *dir = -1;
+	} else if(*p < lo) {
+		*p = lo, *dir = +1;
+	}
+
 }
+
 
 
 
@@ -911,64 +890,36 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 	}
 	t = f0/x->srate;
 
-	if(x->symm_conn[v]) { // WITH SYMM SIGNALS CONNECTED - much slower...
-		// impose bounds on symmetry controls & get gradient
-		// can we do this outside the loop? - if symm needn't be signal rate, needn't be calculated here.
+	if(x->symm_conn[v]) { // WITH SYMM SIGNALS CONNECTED
 		if(*x->symm[v] < SYMMMIN) symm = SYMMMIN;
 		else if (*x->symm[v] > SYMMMAX) symm = SYMMMAX;
 		else symm = *x->symm[v];
 
 		a = bounce_alimit(1/symm, width, t);
-
-		//cursor movement calcs
-		if(*dir == 1){ //rising
-			*p = *p + (2 * a * t);
-			if(*p >= hi){ // TRANSITION
-				b_over_a = -1/(a-1);
-				*p = (hi + (*p - hi)*b_over_a);
-				*dir = -1;
-				if(v < x->voice_count - 2){
-					*(dir+1) = 1;
-				}
-			}
-		} else { // counting down
-			b = -a/(a-1);
-			*p = *p + (2 * b * t);
-			if(*p <= lo){ // TRANSITION
-				*p = (lo + (*p - lo)*(a/b));
-				*dir = 1;
-				if(v > 0){
-					*(dir-1) = -1;
-				}
-			}
-		}
 	} else {	// WITHOUT SYMM SIGNALS CONNECTED
-		// impose bounds on symmetry controls & get gradient
 		a = bounce_alimit(x->grad[v], width, t);
-
-		//cursor movement calcs
-		if(*dir == 1){ //rising
-			*p = *p + (2 * a * t);
-			if(*p >= hi){ // TRANSITION
-				b_over_a = x->bOvera[v];
-				*p = (hi + (*p - hi)*b_over_a);
-				*dir = -1;
-				if(v < x->voice_count - 2){
-					*(dir+1) = 1;
-				}
-			}
-		} else { // counting down
-			b = x->gradb[v];
-			*p = *p + (2 * b * t);
-			if(*p <= lo){ // TRANSITION
-				*p = (lo + (*p - lo)*(x->aOverb[v]));
-				*dir = 1;
-				if(v > 0){
-					*(dir-1) = -1;
-				}
+	}
+	//cursor movement calcs
+	if(*dir == 1){ //rising
+		*p = *p + (2 * a * t);
+		if(*p >= hi){ // TRANSITION
+			b_over_a = -1/(a-1);
+			*p = (hi + (*p - hi)*b_over_a);
+			*dir = -1;
+			if(v < x->voice_count - 2){
+				*(dir+1) = 1;
 			}
 		}
-
+	} else { // counting down
+		b = -a/(a-1);
+		*p = *p + (2 * b * t);
+		if(*p <= lo){ // TRANSITION
+			*p = (lo + (*p - lo)*(a/b));
+			*dir = 1;
+			if(v > 0){
+				*(dir-1) = -1;
+			}
+		}
 	}
 
 	if(*p > hi) {
