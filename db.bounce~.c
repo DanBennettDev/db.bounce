@@ -27,7 +27,6 @@
 
 
 	TODO:	
-		- just have 1 mode - save non-PTR function in case I want to use later, but don't use
 		- improve efficiency of waveshaping (better mechanism)
 
 		- Then move on to db.friction 
@@ -130,7 +129,6 @@ void	bounce_float(t_bounce *x, double f);
 void	bounce_dcblock_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 void	bounce_fm_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 void	bounce_shape_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
-void	bounce_lkup_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 void	bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 
 
@@ -174,7 +172,6 @@ int C74_EXPORT main (void)
 	class_addmethod(bounce_class, (method)bounce_fm_set, "fm", A_GIMME, 0);
 	class_addmethod(bounce_class, (method)bounce_fm_onoff, "fmoff", A_GIMME, 0);
 	class_addmethod(bounce_class, (method)bounce_shape_set, "shape", A_GIMME, 0);
-	class_addmethod(bounce_class, (method)bounce_lkup_set, "lkup", A_GIMME, 0);
 	class_addmethod(bounce_class, (method)bounce_fmax_set, "fmax", A_GIMME, 0);
 	
 
@@ -183,7 +180,11 @@ int C74_EXPORT main (void)
 
 	post("db.bounce~ by Daniel Bennett skjolbrot@gmail.com");
 	post("- Peter Blasser inspired Triangle \"Bounce & Bounds\" oscillators");
-	post("args:- TODO - MORE INFO HERE ");
+	post("args:- 1) no of voices (default 1 - henceforth \"n\") ");
+	post("args:- 2) Lower bound for voice 1 (default -1)");
+	post("args:- 3) Upper bound for voice n (default 1) ");
+	post("args:- 4) mode - 0: waveshaping 1: antialiased triangle (via ptr) ");
+
 	// report to the MAX window
 	return 0;
 }
@@ -340,7 +341,7 @@ void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 			if(arg > 1 && arg < x->voice_count + 1){
 				sprintf(dst,"(signal/float) freq %ld", arg - 1);
 			} else {
-				sprintf(dst,"(signal/float) symmetry %ld, (0-1)", arg - 1);
+				sprintf(dst,"(signal/float) symmetry %d, (0-1)", arg - x->voice_count);
 			}				
 			break;
 		}
@@ -407,6 +408,7 @@ void	bounce_dcblock_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 	}
 }
 
+// MSG "shape" symbol input + int + float sets waveshape for voice
 void bounce_shape_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
 	t_int v;
@@ -428,13 +430,7 @@ void bounce_shape_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 	}
 }
 
-void bounce_lkup_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
-{
-	t_int l;
-	l =  atom_getintarg(0,argc, argv);
-	setup_lktables (x, l);
-}
-
+// MSG "fmax" symbol input + float sets maximum frequency
 void bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
 	t_double f;
@@ -445,7 +441,7 @@ void bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 }
 
 
-// MSG "cross" symbol input, controls modulation amounts via list of 2 ints and a float (from, to, amt)
+// MSG "fm" symbol input, controls modulation amounts via list of 2 ints and a float (from, to, amt)
 void	bounce_fm_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
 	t_int in, out;
@@ -482,7 +478,7 @@ quit_check_loop:
 	;
 }
 
-// MSG "cross" symbol input, controls modulation
+// MSG "fmoff" symbol input, turns off modulation
 void	bounce_fm_onoff(t_bounce *x, t_symbol *msg, short argc, t_atom *argv)
 {
 	int in, out;
