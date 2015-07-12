@@ -14,6 +14,7 @@ Max MSP audio external. Chaotic Triangle Wave Oscillator Bank with Waveshaping, 
       					oscillator. But then why would you use it that way?
       					for want of a more meaningful value, rate input is the pitch 
       					for that specific case
+      					Works on Max 6 & higher, 32 and 64 bit.
 		
 	Version:		0.3
 	
