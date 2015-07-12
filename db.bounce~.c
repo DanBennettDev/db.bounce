@@ -27,7 +27,6 @@
 
 
 	TODO:	
-		- Simplify structure - symmetry @sig rate makes almost no difference
 		- just have 1 mode - save non-PTR function in case I want to use later, but don't use
 		- improve efficiency of waveshaping (better mechanism)
 
@@ -136,7 +135,8 @@ void	bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 
 
 // Audio Calc functions
-void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
+void 	bounce_PerformWrapper(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
+void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long sampleframes, void (*voicemode)(void *, t_double, t_double, t_double, t_double));
 void	 bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
 void 	bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
 
@@ -316,7 +316,7 @@ void	bounce_dsp64(t_bounce *x, t_object *dsp64, short *count, double samplerate,
 		x->slx4 =  (4 / x->srate);
 	}
 
-	object_method(dsp64, gensym("dsp_add64"), x, bounce_perform64, 0, NULL);
+	object_method(dsp64, gensym("dsp_add64"), x, bounce_PerformWrapper, 0, NULL);
 
 	// check if signals are connected
 	x->bound_lo_conn = count[0];
@@ -632,13 +632,23 @@ double do_shaping (t_bounce *x, t_double lo, t_double hi)
 	}
 }
 
-void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam)
+
+void 	bounce_PerformWrapper(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam)
+{
+	if(x->mode==0){
+		bounce_perform64(x, ins, outs, sampleframes, bounce_shaper_voicecalc);
+	} else{
+		bounce_perform64(x, ins, outs, sampleframes, bounce_ptr_voicecalc);
+	}
+}
+
+
+void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long sampleframes, void (*voicemode)(void *, t_double, t_double, t_double, t_double))
 {	
 	t_double **hz, **symm, **out;
 	t_double *bound_lo, *bound_hi;
 	t_double this_lo, this_hi, width, symm_l, f0, fmax, grad, t;
 	t_int samples, i, v;
-
 
 	// Dereference
 	hz = x->hz;
@@ -698,8 +708,6 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 				this_hi = x->ball_loc[v+1] < *bound_hi ? x->ball_loc[v+1] : *bound_hi ;
 			}
 
-			////////////////////////////////////////////////////////
-
 			if(this_lo >= this_hi - THINNESTPIPE){
 				this_hi = this_lo + THINNESTPIPE;
 			}
@@ -726,11 +734,9 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 				grad = bounce_alimit(x->grad[v], width, t);
 			}
 
+			// mode-specific voice calcs
+			voicemode(x, this_lo, this_hi, grad, t);
 
-			// JUST FOR DEVELOPMENT - TIDY ALL THIS UP INTO SEPARATE PERFORM ROUTINES
-			if(x->mode == 0) bounce_ptr_voicecalc(x, this_lo, this_hi, grad, t);
-			else bounce_shaper_voicecalc(x, this_lo, this_hi, grad, t);
-	
 				// next ball's lo bound is this ball's pos (limited to outer bound)
 			this_lo = x->ball_loc[v] > *bound_lo ? x->ball_loc[v]: *bound_lo;
 
@@ -803,10 +809,7 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad,
 	} else if(*p < lo) {
 		*p = lo, *dir = +1;
 	}
-
 }
-
-
 
 
 
@@ -822,7 +825,6 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double gr
 	dir = &x->direction[v];
 	p = &x->ball_loc[v];
 	out = x->out[v];
-
 
 	//cursor movement calcs
 	if(*dir == 1){ //rising
