@@ -138,7 +138,8 @@ void	bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 // Audio Calc functions
 void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
 void	 bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi);
-void	 bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi);
+void 	bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
+
 t_double  bounce_dcblock(t_double input, t_double *lastinput, t_double *lastoutput, t_double gain);
 t_double bounce_fmcalc (t_bounce *x, t_int curr_voice);
 t_double ptr_correctmax(t_double p, t_double a, t_double b, t_double t, t_double pmin, t_double pmax);
@@ -635,8 +636,8 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 {	
 	t_double **hz, **symm, **out;
 	t_double *bound_lo, *bound_hi;
-	t_double this_lo, this_hi;
-	t_int samples, i;
+	t_double this_lo, this_hi, width, symm_l, f0, fmax, grad, t;
+	t_int samples, i, v;
 
 
 	// Dereference
@@ -689,22 +690,54 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 		// Loop through voices
 		this_lo = *bound_lo;
 		for(x->curr_v=0; x->curr_v < x->voice_count; x->curr_v++){			
+			v = x->curr_v;
 			// hi bound is next ball's pos @ last sample 
-			if(x->curr_v == x->voice_count - 1){
+			if(v == x->voice_count - 1){
 				this_hi = *bound_hi; 			// except last ball which gets the outer hi bound
 			}else{
-				this_hi = x->ball_loc[x->curr_v+1] < *bound_hi ? x->ball_loc[x->curr_v+1] : *bound_hi ;
+				this_hi = x->ball_loc[v+1] < *bound_hi ? x->ball_loc[v+1] : *bound_hi ;
 			}
+
+			////////////////////////////////////////////////////////
+
+			if(this_lo >= this_hi - THINNESTPIPE){
+				this_hi = this_lo + THINNESTPIPE;
+			}
+			width = this_hi - this_lo;
+			// get freq from freq modulation
+			f0 = bounce_fmcalc (x, v);
+			// determine freq & gradient limits at this width
+			fmax = x->fmax * width;
+			// apply limits
+			if(f0>fmax) {
+				f0 = fmax;
+			} else if (f0 < FMIN) {
+				f0 = FMIN;
+			}
+			t = f0/x->srate;
+
+			if(x->symm_conn[v]) { // WITH SYMM SIGNALS CONNECTED
+				if(*x->symm[v] < SYMMMIN) symm_l = SYMMMIN;
+				else if (*x->symm[v] > SYMMMAX) symm_l = SYMMMAX;
+				else symm_l = *x->symm[v];
+
+				grad = bounce_alimit(1/symm_l, width, t);
+			} else {	// WITHOUT SYMM SIGNALS CONNECTED
+				grad = bounce_alimit(x->grad[v], width, t);
+			}
+			////////////////////////////////////////////////////////
+
+
 			// JUST FOR DEVELOPMENT - TIDY ALL THIS UP INTO SEPARATE PERFORM ROUTINES
 			if(x->mode == 0) bounce_ptr_voicecalc(x, this_lo, this_hi);	
-			else bounce_shaper_voicecalc(x, this_lo, this_hi);	
+			else bounce_shaper_voicecalc(x, this_lo, this_hi, grad, t);
 	
 				// next ball's lo bound is this ball's pos (limited to outer bound)
-			this_lo = x->ball_loc[x->curr_v] > *bound_lo ? x->ball_loc[x->curr_v]: *bound_lo; 
+			this_lo = x->ball_loc[v] > *bound_lo ? x->ball_loc[v]: *bound_lo;
 
 			// apply dcblock if on
-			if(x->dcblock_on[x->curr_v]){
-				*(out[x->curr_v]) = bounce_dcblock(*(out[x->curr_v]),&x->dc_prev_in[x->curr_v], &x->dc_prev_out[x->curr_v], (t_double) DCBLOCK_GAIN);
+			if(x->dcblock_on[v]){
+				*(out[v]) = bounce_dcblock(*(out[v]),&x->dc_prev_in[v], &x->dc_prev_out[v], (t_double) DCBLOCK_GAIN);
 			} 
 		}
 		
@@ -815,9 +848,9 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 
 
 
-void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
+void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t)
 {
-	t_double width, f0, fmax, symm, a, b, b_over_a, t;
+	t_double b, b_over_a;
 	t_double *p;
 	t_double *out;
 	t_int v;
@@ -828,38 +861,13 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 	p = &x->ball_loc[v];
 	out = x->out[v];
 
-	if(lo >= hi - THINNESTPIPE){
-		hi = lo + THINNESTPIPE;
-	}
-	width = hi - lo;
 
-	// get freq from freq modulation
-	f0 = bounce_fmcalc (x, v);
-
-	// determine freq & gradient limits at this width
-	fmax = x->fmax * width;
-	// apply limits
-	if(f0>fmax) {
-		f0 = fmax;
-	} else if (f0 < FMIN) {
-		f0 = FMIN;
-	}
-	t = f0/x->srate;
-
-	if(x->symm_conn[v]) { // WITH SYMM SIGNALS CONNECTED
-		if(*x->symm[v] < SYMMMIN) symm = SYMMMIN;
-		else if (*x->symm[v] > SYMMMAX) symm = SYMMMAX;
-		else symm = *x->symm[v];
-
-		a = bounce_alimit(1/symm, width, t);
-	} else {	// WITHOUT SYMM SIGNALS CONNECTED
-		a = bounce_alimit(x->grad[v], width, t);
-	}
+//////////////////////////////////////////////////////////
 	//cursor movement calcs
 	if(*dir == 1){ //rising
-		*p = *p + (2 * a * t);
+		*p = *p + (2 * grad * t);
 		if(*p >= hi){ // TRANSITION
-			b_over_a = -1/(a-1);
+			b_over_a = -1/(grad-1);
 			*p = (hi + (*p - hi)*b_over_a);
 			*dir = -1;
 			if(v < x->voice_count - 2){
@@ -867,10 +875,10 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 			}
 		}
 	} else { // counting down
-		b = -a/(a-1);
+		b = -grad/(grad-1);
 		*p = *p + (2 * b * t);
 		if(*p <= lo){ // TRANSITION
-			*p = (lo + (*p - lo)*(a/b));
+			*p = (lo + (*p - lo)*(grad/b));
 			*dir = 1;
 			if(v > 0){
 				*(dir-1) = -1;
@@ -884,5 +892,4 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 		*p = lo, *dir = +1;
 	}
 	*out = (t_double) do_shaping(x, lo, hi);
-//	*out = *p;
 }
