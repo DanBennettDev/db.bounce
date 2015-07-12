@@ -49,7 +49,7 @@ clean64:
 	-rm -f $(P).mxe64 $(P).o
 
 object64:
-	$(CC) -c -g -Wno-unknown-pragmas -O3 $(COMPFLAGS) $(MAXINC) $(P).c
+	$(CC) -c -g -Wall -Wno-unknown-pragmas -O3 $(COMPFLAGS) $(MAXINC) $(P).c
 
 mxe64:
 	$(CC) -shared -Wall $(DLLFLAGS) -o $(P).mxe64 $(P).o $(P).def $(MAXLD_LOC) $(MAXLD_FLAGS)

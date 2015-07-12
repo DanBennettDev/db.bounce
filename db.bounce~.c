@@ -329,44 +329,6 @@ void	bounce_dsp64(t_bounce *x, t_object *dsp64, short *count, double samplerate,
 }
 
 
-//void bounce_dsp(t_bounce *x, t_signal **sp, short *count)
-//{
-//	t_int i, pointercount;
-//	t_int **sigvec;
-//	pointercount = (x->voice_count * 3) + 4; // 1each i, o, hz, symm per voice, lo + hi inputs, obj pointer and vec samps
-//
-//	// allocate memory to array
-//	sigvec = (t_int **) calloc(pointercount, sizeof(t_int *));
-//	for(i = 0; i < pointercount; i++){
-//	sigvec[i] = (t_int *) calloc(sizeof(t_int),1);
-//	}
-//	// first pointer = the object
-//	sigvec[0] = (t_int *)x;
-//	// last = vector size (N)
-//	sigvec[pointercount - 1] = (t_int *)sp[0]->s_n;
-//	// between - inlets and outlets
-//	for(i = 1; i < pointercount - 1; i++){
-//	sigvec[i] = (t_int *)sp[i-1]->s_vec;
-//	}
-//
-//	// Check sample rate in object against vector and update if neccessary
-//	if(x->srate != (t_double) sys_getsr()){
-//		x->srate = (t_double) sys_getsr();
-//		x->slx4 =  (4 / x->srate);
-//	}
-//
-//	dsp_addv(bounce_perform, pointercount, (void **) sigvec);
-//
-//	// check if signals are connected
-//	x->bound_lo_conn = count[0];
-//	x->bound_hi_conn = count[1];
-//	for(i=0; i< x->voice_count; i++){
-//		x->hz_conn[i] = count[i+2];
-//		x->symm_conn[i] = count[i + 2 + x->voice_count];
-//	}
-//	free(sigvec);
-//}
-
 void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 {
 	if (msg==ASSIST_INLET){
@@ -375,9 +337,9 @@ void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 		case 1: sprintf(dst,"(signal/float) Upper Bound"); break;
 		default:
 			if(arg > 1 && arg < x->voice_count + 1){
-				sprintf(dst,"(signal/float) freq %d", arg - 1);
+				sprintf(dst,"(signal/float) freq %ld", arg - 1);
 			} else {
-				sprintf(dst,"(signal/float) symmetry %d, (0-1)", arg - 1);				
+				sprintf(dst,"(signal/float) symmetry %ld, (0-1)", arg - 1);
 			}				
 			break;
 		}
@@ -765,7 +727,7 @@ void 	bounce_perform64(t_bounce *x, t_object *dsp64, double **ins, long numins, 
 
 void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 {
-	t_double width, f0, fmax, slx4, symm, a, amin, amax, b, t;
+	t_double width, f0, fmax, symm, a, b, t;
 	t_double *p;
 	t_double *out;
 	t_int v;
@@ -775,16 +737,11 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 	dir = &x->direction[v];
 	p = &x->ball_loc[v];
 	out = x->out[v];
-	slx4 = x->slx4; // 4/sr - to reduce calcs
 
 	if(lo >= hi - THINNESTPIPE){
 		hi = lo + THINNESTPIPE;
 	}
 	width = hi - lo;
-
-	// impose bounds on symmetry controls
-	if(symm < SYMMMIN) symm = SYMMMIN;
-	else if (symm > SYMMMAX) symm = SYMMMAX;
 
 	// get freq from freq modulation
 	f0 = bounce_fmcalc (x, v);
@@ -860,7 +817,7 @@ void bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi)
 
 void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 {
-	t_double width, f0, fmax, slx4, symm, a, b, b_over_a, t;
+	t_double width, f0, fmax, symm, a, b, b_over_a, t;
 	t_double *p;
 	t_double *out;
 	t_int v;
@@ -870,7 +827,6 @@ void bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi)
 	dir = &x->direction[v];
 	p = &x->ball_loc[v];
 	out = x->out[v];
-	slx4 = x->slx4; // 4/sr - to reduce calcs
 
 	if(lo >= hi - THINNESTPIPE){
 		hi = lo + THINNESTPIPE;
