@@ -74,7 +74,6 @@
 typedef struct _bounce {
 	t_pxobject	obj;			
 	t_double  srate;
-	t_double  slx4; // sample len * 4 
 	t_double  fmax;
 
 	t_double	  bound_lo;		// lower bound for entire ensemble
@@ -83,9 +82,7 @@ typedef struct _bounce {
 	t_double	  *hzFloat;
 	t_double	  **symm;		// symmetry (per voice)
 	t_double  *grad;		// variables for optimising non-signal rate calcs of symm
-	t_double  *gradb;
-	t_double  *aOverb;
-	t_double  *bOvera;
+
 
 	t_double  *ball_loc;	// location of the ball
 	t_int	  *direction;	// current direction of ball (-1/1)
@@ -200,9 +197,6 @@ void bounce_dsp_free (t_bounce *x)
 	t_freebytes(x->symm, x->voice_count * sizeof(t_double *));
 	t_freebytes(x->hzFloat, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->grad, x->voice_count * sizeof(t_double ));
-	t_freebytes(x->gradb, x->voice_count * sizeof(t_double ));
-	t_freebytes(x->aOverb, x->voice_count * sizeof(t_double ));
-	t_freebytes(x->bOvera, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->ball_loc, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->shape, x->voice_count * sizeof(t_double ));
 	t_freebytes(x->direction, x->voice_count * sizeof(t_int ));
@@ -257,9 +251,6 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 	x->out = (t_double **) t_getbytes(x->voice_count * sizeof(t_double *));
 	x->hzFloat = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->grad = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
-	x->gradb = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
-	x->aOverb = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
-	x->bOvera = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->ball_loc = (t_double *) t_getbytes(x->voice_count * sizeof(t_double));
 	x->direction = (t_int *) t_getbytes(x->voice_count * sizeof(t_int));
 	x->hz_conn = (t_int *) t_getbytes(x->voice_count * sizeof(t_int));
@@ -295,7 +286,6 @@ void *bounce_new(t_symbol *s, short argc, t_atom *argv)
 
 	// initialize remaining parameters
 	x->srate = (t_double)sys_getsr();
-	x->slx4 = (4 / x->srate);
 	x->fm_on = 0;
 
 #if DEBUG_ON == 1|| DEBUG_ON == 2
@@ -314,7 +304,6 @@ void	bounce_dsp64(t_bounce *x, t_object *dsp64, short *count, double samplerate,
 	// Check sample rate in object against vector and update if neccessary
 	if(x->srate != (t_double) sys_getsr()){
 		x->srate = (t_double) sys_getsr();
-		x->slx4 =  (4 / x->srate);
 	}
 
 	object_method(dsp64, gensym("dsp_add64"), x, bounce_PerformWrapper, 0, NULL);
@@ -338,10 +327,10 @@ void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 		case 0: sprintf(dst,"(signal/float) Lower Bound"); break;
 		case 1: sprintf(dst,"(signal/float) Upper Bound"); break;
 		default:
-			if(arg > 1 && arg < x->voice_count + 1){
+			if(arg > 1 && arg < x->voice_count + 2 ){
 				sprintf(dst,"(signal/float) freq %ld", arg - 1);
 			} else {
-				sprintf(dst,"(signal/float) symmetry %d, (0-1)", arg - x->voice_count);
+				sprintf(dst,"(signal/float) symmetry %d, (0-1)", (int)(arg - x->voice_count -1));
 			}				
 			break;
 		}
@@ -350,7 +339,6 @@ void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 		sprintf(dst,"(signal) Wave Output"); 
 		}
 }
-
 
 /************************************************************
 !!!!!!!!!!!!	INCOMING MESSAGE HANDLING		!!!!!!!!!!!!
@@ -377,10 +365,8 @@ void bounce_float(t_bounce *x, double f)
 				
 				grad  = 1/symm;
 				gradb = -grad/(grad-1);
-				x->aOverb[inlet - (2 + x->voice_count)] = grad/gradb;
-				x->bOvera[inlet - (2 + x->voice_count)] = gradb/grad;
 				x->grad[inlet - (2 + x->voice_count)] = grad;
-				x->gradb[inlet - (2 + x->voice_count)] = gradb;
+
 			}
 			break;
 	}
@@ -668,8 +654,8 @@ void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long samplefram
 	// hz inputs,
 	for  (i = 0; i< x->voice_count; i++){
 		if(x->hz_conn[i]){	// if signal connected, point at signal in
-			hz[i] = (t_double *) (ins[i + 1]);
-		} else{				// if not, point at value in bounce object
+			hz[i] = (t_double *) (ins[i + 2]);
+		} else{				// if not, point at value in drag object
 			hz[i] = &(x->hzFloat[i]);
 		}
 	}
