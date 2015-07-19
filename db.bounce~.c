@@ -131,7 +131,7 @@ void	bounce_fmax_set(t_bounce *x, t_symbol *msg, short argc, t_atom *argv);
 
 // Audio Calc functions
 void 	bounce_PerformWrapper(t_bounce *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
-void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long sampleframes, void (*voicemode)(void *, t_double, t_double, t_double, t_double));
+void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long sampleframes, void (*voicemode)(t_bounce *, t_double, t_double, t_double, t_double));
 void	 bounce_ptr_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
 void 	bounce_shaper_voicecalc (t_bounce *x, t_double lo, t_double hi, t_double grad, t_double t);
 
@@ -302,9 +302,13 @@ void	bounce_dsp64(t_bounce *x, t_object *dsp64, short *count, double samplerate,
 	t_int i;
 
 	// Check sample rate in object against vector and update if neccessary
-	if(x->srate != (t_double) sys_getsr()){
-		x->srate = (t_double) sys_getsr();
+//	if(x->srate != (t_double) sys_getsr()){
+//		x->srate = (t_double) sys_getsr();
+//	}
+	if(x->srate != samplerate){
+		x->srate = samplerate;
 	}
+
 
 	object_method(dsp64, gensym("dsp_add64"), x, bounce_PerformWrapper, 0, NULL);
 
@@ -346,7 +350,7 @@ void bounce_assist(t_bounce *x, void *b, long msg, long arg, char *dst)
 
 void bounce_float(t_bounce *x, double f)
 {
-	double grad, gradb;
+	double grad;
 	double symm;
 	int inlet = ((t_pxobject*)x)->z_in;
 
@@ -364,7 +368,6 @@ void bounce_float(t_bounce *x, double f)
 				else symm = f;
 				
 				grad  = 1/symm;
-				gradb = -grad/(grad-1);
 				x->grad[inlet - (2 + x->voice_count)] = grad;
 
 			}
@@ -625,7 +628,7 @@ void 	bounce_PerformWrapper(t_bounce *x, t_object *dsp64, double **ins, long num
 }
 
 
-void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long sampleframes, void (*voicemode)(void *, t_double, t_double, t_double, t_double))
+void 	bounce_perform64(t_bounce *x, double **ins, double **outs, long sampleframes, void (*voicemode)(t_bounce *, t_double, t_double, t_double, t_double))
 {	
 	t_double **hz, **symm, **out;
 	t_double *bound_lo, *bound_hi;
