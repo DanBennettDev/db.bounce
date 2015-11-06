@@ -6,14 +6,16 @@ Max MSP audio external. Chaotic Triangle Wave Oscillator Bank with Waveshaping, 
 	DATE:			24/01/2015
 	DESCRIPTION:	Multiple interacting Peter Blasser style "Bounds 	
       			and Bounce" triangle oscillators.
-      			cursor, imagined as a ball moving along vector (s,s)
-      			with s defined by user
-      			y component reverses sign when the cursor reaches bounds.
-      			At fixed bounds (-1..1) behaviour for a single voice 
-      			instance is as normal, crude (non bandlimited ) triangle 
-      			oscillator. But then why would you use it that way?
-      			for want of a more meaningful value, rate input is the pitch 
-      			for that specific case
+      			Overview:
+      			- Imaginary balls moving along vector (s,s) with s defined by user per ball
+      			- Y component reverses sign when the cursor reaches bound.
+      			- lower bound of ball n is location of ball n-1
+      			  upper bound of ball n is location of ball n+1
+      			- At fixed bounds (-1..1) behaviour for a single voice 
+      			  instance is as normal, crude (non bandlimited ) triangle 
+      			  oscillator. 
+      			for want of a more meaningful value, rate input scaled as the frequency
+      			of the fixed bounds (-1...1) case.
       			Works on Max 6 & higher, 32 and 64 bit.
 		
 	Version:		0.3
