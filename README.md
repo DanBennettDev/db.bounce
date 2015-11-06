@@ -5,7 +5,15 @@ Max MSP audio external. Chaotic Triangle Wave Oscillator Bank with Waveshaping, 
 	AUTHOR:			Daniel Bennett (skjolbrot@gmail.com)
 	DATE:			24/01/2015
 	DESCRIPTION:	Multiple interacting Peter Blasser style "Bounds 	
-      			and Bounce" triangle oscillators.
+      			and Bounce" triangle oscillators. 
+      			Additions to Peter Blasser approach:
+      			- Extensive frequency modulation
+      			- variable slope on triangle
+      			- waveshaping to pseudo-sinusoud and hyperbolic sine
+			additions 1 and 2 have far more effect on character of the oscillator 
+			than one might expect, impacting not only on timbre, but also 
+			on pitch and microrhythmic signature. 
+			
       			Overview:
       			- Imaginary balls moving along vector (s,s) with s defined by user per ball
       			- Y component reverses sign when the cursor reaches bound.
