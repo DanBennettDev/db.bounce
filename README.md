@@ -1,5 +1,7 @@
 # db.bounce
-Max MSP audio external. Chaotic Triangle Wave Oscillator Bank with Waveshaping, FM, ++
+
+One of the first things I programmed in C
+A Max MSP audio external. Chaotic Triangle Wave Oscillator Bank with Waveshaping, FM, ++
 
 
 	AUTHOR:			Daniel Bennett (skjolbrot@gmail.com)
